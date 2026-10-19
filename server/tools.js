@@ -345,7 +345,7 @@ function defineTools(ctx) {
         },
         {
             name: 'local_get_status',
-            description: '获取插件本地状态（git 分支/HEAD、watchers、预览、命令日志）',
+            description: '获取插件本地状态（SVN 路径/版本 svnState·svnUrl·svnRevision、watchers、预览、命令日志）。svnState 为 versioned / unversioned（目录未纳入 SVN）/ unavailable',
             inputSchema: { type: 'object', properties: {} },
             handler: async function () {
                 return await local.getStatus();

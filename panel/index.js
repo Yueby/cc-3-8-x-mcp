@@ -20,8 +20,8 @@ exports.template = /* html */ `
 
   <section class="status">
     <header>编辑器 <span id="probeDot" class="dot gray" title="预览连通性"></span></header>
-    <div class="row"><label>分支</label><span id="gitBranch">-</span></div>
-    <div class="row"><label>HEAD</label><span id="gitHead">-</span></div>
+    <div class="row"><label>SVN 路径</label><span id="svnUrl">-</span></div>
+    <div class="row"><label>SVN 版本</label><span id="svnRevision">-</span></div>
     <div class="row"><label>预览地址</label><span id="previewUrl">-</span></div>
     <div class="row"><label>预览端口</label><span id="previewPort">-</span></div>
     <div class="row"><label>编辑器 PID</label><span id="editorPid">-</span></div>
@@ -111,8 +111,8 @@ exports.$ = {
     editorPid: '#editorPid',
     watchers: '#watchers',
     updatedAt: '#updatedAt',
-    gitBranch: '#gitBranch',
-    gitHead: '#gitHead',
+    svnUrl: '#svnUrl',
+    svnRevision: '#svnRevision',
     probeDot: '#probeDot',
     btnRefresh: '#btnRefresh',
     btnSoftReload: '#btnSoftReload',
@@ -146,8 +146,10 @@ exports.methods = {
         try {
             const s = await Editor.Message.request('cc-3-8-x-mcp', 'get-status');
             if (!s) return;
-            this.$.gitBranch.textContent = s.gitBranch || '-';
-            this.$.gitHead.textContent = s.gitHead || '-';
+            // SVN：已版本化显示相对路径与版本号；未纳入 SVN / 获取失败时明确提示，避免只显示 "-" 被误认为功能异常
+            const svnHint = { unversioned: '未纳入 SVN 版本控制', unavailable: '无法获取（未安装 svn 或超时）' };
+            this.$.svnUrl.textContent = s.svnState === 'versioned' ? (s.svnUrl || '-') : (svnHint[s.svnState] || '-');
+            this.$.svnRevision.textContent = s.svnRevision ? 'r' + s.svnRevision : '-';
             this.$.previewUrl.textContent = s.previewUrl || '-';
             this.$.previewPort.textContent = s.previewPort != null ? String(s.previewPort) : '-';
             this.$.editorPid.textContent = String(s.editorPid || '-');

@@ -128,7 +128,7 @@ prefab_query                   →  Gateway 本地执行（cli），无需编辑
 | 区块 | 内容 |
 |---|---|
 | Editor Bridge | 运行状态指示灯 / 私有端点 / tool 数量 / 请求计数；复制不含令牌的诊断信息、查看客户端入口、重启 |
-| 编辑器状态 | 当前分支 / HEAD / 预览地址和端口 / 编辑器 PID / Watcher 状态 / 最后更新时间 |
+| 编辑器状态 | SVN 路径 / SVN 版本 / 预览地址和端口 / 编辑器 PID / Watcher 状态 / 最后更新时间 |
 | 快捷动作 | 一键刷新（资源+场景+预览）/ 软重载场景 / 打开预览浏览器 / 截图 / 打开 .dev 目录 / 清理临时文件 / 手动输入路径重新导入 |
 | Debug 注入 | 在预览页面执行任意 JS（`eval_js`），结果直接展示；自定义快捷按钮（配置见下方） |
 | 同机 Worktree | 列出同机其他 worktree 及其预览端口，方便多开切换 |
@@ -191,7 +191,7 @@ prefab_query                   →  Gateway 本地执行（cli），无需编辑
 
 | Tool | 说明 |
 |---|---|
-| `local_get_status` | 获取编辑器本地状态（git branch、预览端口、PID 等） |
+| `local_get_status` | 获取编辑器本地状态（SVN 路径/版本、预览端口、PID 等）；`svnState` 为 `versioned` / `unversioned`（目录未纳入 SVN）/ `unavailable` |
 | `local_list_worktrees` | 列出同机所有 worktree |
 | `local_open_dev_dir` | 在 Finder 中打开 .dev 目录 |
 | `local_clean_dev_dir` | 清理 .dev 临时文件 |
