@@ -2,7 +2,7 @@
 
 var fs = require('fs');
 var path = require('path');
-var { exec } = require('child_process');
+var { exec, execFile } = require('child_process');
 var localStatus = require('./server/local-status');
 
 var DEV_DIR = '.dev';
@@ -28,6 +28,36 @@ var COMMAND_LOG_MAX = 30;
 function pushCommandLog(source, cmd) {
     _commandLog.push({ t: new Date().toISOString(), source: source, cmd: cmd });
     if (_commandLog.length > COMMAND_LOG_MAX) _commandLog.shift();
+}
+
+// git 查询结果缓存：key 为参数串，value 为 { at, promise }。
+// 面板每 10s 轮询状态，原先用 execSync 在编辑器主进程同步起 3 个 git 子进程（Windows 上每个约 100ms），
+// 会周期性卡住编辑器界面；改为异步 execFile，并在 GIT_CACHE_TTL_MS 内复用结果（同时合并并发请求）。
+var GIT_CACHE_TTL_MS = 5000;
+var GIT_TIMEOUT_MS = 3000;
+var _gitCache = new Map();
+
+/**
+ * 在当前项目目录异步执行 git 命令，不阻塞编辑器主进程。
+ * 失败（非 git 仓库、未安装 git、超时）一律返回空字符串；结果在 GIT_CACHE_TTL_MS 内复用。
+ * @param {string[]} args git 子命令及参数，例如 ['rev-parse', '--short', 'HEAD']
+ * @returns {Promise<string>} 去掉首尾空白的 stdout
+ */
+function runGit(args) {
+    var key = args.join(' ');
+    var hit = _gitCache.get(key);
+    if (hit && Date.now() - hit.at < GIT_CACHE_TTL_MS) return hit.promise;
+    var promise = new Promise(function (resolve) {
+        execFile('git', ['-C', Editor.Project.path].concat(args), {
+            encoding: 'utf-8',
+            timeout: GIT_TIMEOUT_MS,
+            windowsHide: true,
+        }, function (err, stdout) {
+            resolve(err ? '' : String(stdout).trim());
+        });
+    });
+    _gitCache.set(key, { at: Date.now(), promise: promise });
+    return promise;
 }
 
 /**
@@ -233,7 +263,7 @@ exports.methods = {
         return removed;
     },
     /** Panel 使用：扫同机其他 worktree 的 dev-reload-info.json */
-    listWorktrees() {
+    async listWorktrees() {
         var results = [];
         // 扫当前项目同级目录里其它含 temp/dev-reload-info.json 的项目实例（不假设目录命名）
         var cur = Editor.Project.path;
@@ -247,16 +277,14 @@ exports.methods = {
                 }
             });
         } catch (e) { /* ignore */ }
-        // 再扫 worktree：`git worktree list` 输出的路径
-        try {
-            var wtOut = require('child_process').execSync('git -C "' + cur + '" worktree list --porcelain', { encoding: 'utf-8' });
-            wtOut.split('\n').forEach(function (line) {
-                if (line.indexOf('worktree ') === 0) {
-                    var p = line.substring('worktree '.length).trim();
-                    if (p && roots.indexOf(p) < 0) roots.push(p);
-                }
-            });
-        } catch (e) { /* ignore */ }
+        // 再扫 worktree：`git worktree list` 输出的路径（异步 + 缓存，失败时为空串）
+        var wtOut = await runGit(['worktree', 'list', '--porcelain']);
+        wtOut.split('\n').forEach(function (line) {
+            if (line.indexOf('worktree ') === 0) {
+                var p = line.substring('worktree '.length).trim();
+                if (p && roots.indexOf(p) < 0) roots.push(p);
+            }
+        });
 
         roots.forEach(function (root) {
             var candidates = [
@@ -294,13 +322,13 @@ exports.methods = {
                 updatedAt = info.updatedAt || '';
             }
         } catch (e) { /* ignore */ }
-        // git 分支/commit
-        var gitBranch = '', gitHead = '';
-        try {
-            var execSync = require('child_process').execSync;
-            gitBranch = execSync('git -C "' + Editor.Project.path + '" rev-parse --abbrev-ref HEAD', { encoding: 'utf-8' }).trim();
-            gitHead = execSync('git -C "' + Editor.Project.path + '" rev-parse --short HEAD', { encoding: 'utf-8' }).trim();
-        } catch (e) { /* ignore */ }
+        // git 分支/commit：两条命令并行异步执行；非 git 仓库时均为空串
+        var gitInfo = await Promise.all([
+            runGit(['rev-parse', '--abbrev-ref', 'HEAD']),
+            runGit(['rev-parse', '--short', 'HEAD']),
+        ]);
+        var gitBranch = gitInfo[0];
+        var gitHead = gitInfo[1];
         return {
             previewUrl: url,
             previewPort: portMatch ? parseInt(portMatch[1], 10) : null,
