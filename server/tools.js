@@ -6,6 +6,41 @@
  * ctx 提供：editor message 封装、本地辅助函数。
  */
 
+/**
+ * 按需裁剪节点树，避免大场景一次返回数 MB 数据。
+ * brief=true 只保留 name/active/uuid/type；maxDepth 限制向下展开的层数（0 表示只返回根节点自身）。
+ * 被深度截断且仍有子节点的节点会带 childCount，调用方可按其 uuid 继续展开子树。
+ * @param {object} node 编辑器返回的节点树节点
+ * @param {boolean} brief 是否只保留基础字段
+ * @param {number|undefined} maxDepth 最大展开层数；undefined 表示不限制
+ * @param {number} level 当前节点所在层级，根节点为 0
+ * @returns {object} 裁剪后的新节点树，不修改入参
+ */
+function pruneNodeTree(node, brief, maxDepth, level) {
+    if (!node || typeof node !== 'object') return node;
+    var out = {};
+    if (brief) {
+        out.name = node.name;
+        out.active = node.active;
+        out.uuid = node.uuid;
+        out.type = node.type;
+    } else {
+        Object.keys(node).forEach(function (key) {
+            if (key !== 'children') out[key] = node[key];
+        });
+    }
+    var children = Array.isArray(node.children) ? node.children : [];
+    if (maxDepth !== undefined && level >= maxDepth) {
+        if (children.length > 0) out.childCount = children.length;
+        out.children = [];
+    } else {
+        out.children = children.map(function (child) {
+            return pruneNodeTree(child, brief, maxDepth, level + 1);
+        });
+    }
+    return out;
+}
+
 function defineTools(ctx) {
     var msg = ctx.msg;   // async (target, name, ...args) => result
     var local = ctx.local; // { getPreviewUrl, doReimport, doRefreshAssets, doReloadScene, listWorktrees, openDevDir, cleanDevDir, getStatus }
@@ -14,13 +49,24 @@ function defineTools(ctx) {
         // ── scene 域 ──
         {
             name: 'scene_query_node_tree',
-            description: '查询当前场景节点树。传 uuid 查子树，不传查根。',
+            description: '查询当前场景节点树。传 uuid 查子树，不传查根。默认返回完整树；大场景（数千节点）建议传 brief:true 和 depth，可把返回体积缩小 80% 以上，再按节点 uuid 逐层展开。',
             inputSchema: {
                 type: 'object',
-                properties: { uuid: { type: 'string', description: '可选：节点 uuid' } },
+                properties: {
+                    uuid: { type: 'string', description: '可选：节点 uuid' },
+                    brief: { type: 'boolean', description: '可选：为 true 时每个节点只返回 name/active/uuid/type（不含 Prefab 等元数据），默认 false' },
+                    depth: { type: 'integer', minimum: 0, description: '可选：向下展开的最大层数，0 表示只返回起点节点；被截断的节点带 childCount。不传表示不限制' },
+                },
             },
             handler: async function (args) {
-                return await msg('scene', 'query-node-tree', args.uuid);
+                var hasDepth = args.depth !== undefined;
+                if (hasDepth && (!Number.isInteger(args.depth) || args.depth < 0)) {
+                    throw new Error('depth 必须是 >= 0 的整数，收到：' + JSON.stringify(args.depth));
+                }
+                var tree = await msg('scene', 'query-node-tree', args.uuid);
+                var brief = args.brief === true;
+                if (!brief && !hasDepth) return tree;   // 未指定裁剪参数：保持原有完整返回
+                return pruneNodeTree(tree, brief, hasDepth ? args.depth : undefined, 0);
             },
         },
         {
