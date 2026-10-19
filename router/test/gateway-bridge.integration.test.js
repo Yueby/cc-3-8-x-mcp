@@ -68,7 +68,8 @@ before(async () => {
     }, null, 2), { mode: 0o600 });
 
     gateway = spawn(process.execPath, [path.join(__dirname, '..', 'bin.js')], {
-        env: Object.assign({}, process.env, { HOME: tempHome }),
+        // Windows 上 os.homedir() 读 USERPROFILE 而不是 HOME，两个都要隔离，否则网关会扫到真实注册目录
+        env: Object.assign({}, process.env, { HOME: tempHome, USERPROFILE: tempHome }),
         stdio: ['pipe', 'pipe', 'pipe'],
     });
     gateway.on('exit', (code) => {
@@ -112,12 +113,13 @@ test('Gateway 通过 Editor Bridge 聚合并转发 tool/resource', async () => {
         name: 'integration__echo',
         arguments: { value: 9 },
     });
-    assert.match(called.content[0].text, /"value": 9/);
+    // Bridge 输出为紧凑 JSON：按解析后的内容断言，不绑定缩进/空格格式
+    assert.equal(JSON.parse(called.content[0].text).echoed.value, 9);
 
     const resources = await callGateway('resources/list');
     const resource = resources.resources.find((item) => item.name.includes('integration resource'));
     assert.ok(resource);
 
     const read = await callGateway('resources/read', { uri: resource.uri });
-    assert.match(read.contents[0].text, /"integrated": true/);
+    assert.equal(JSON.parse(read.contents[0].text).integrated, true);
 });

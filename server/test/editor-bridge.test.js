@@ -91,7 +91,8 @@ test('invoke 保持原 MCP tool result 契约，并把异常变成 isError', asy
         params: { name: 'echo', arguments: { value: 7 } },
     });
     assert.equal(ok.body.result.isError, undefined);
-    assert.match(ok.body.result.content[0].text, /"value": 7/);
+    // 紧凑 JSON 输出：按解析后的内容断言，不绑定缩进/空格格式
+    assert.equal(JSON.parse(ok.body.result.content[0].text).value, 7);
 
     const failed = await post({
         jsonrpc: '2.0', id: 3, method: 'bridge/invoke',
@@ -107,7 +108,17 @@ test('read-resource 返回 Gateway 可直接转成 MCP 的 contents', async () =
         params: { uri: 'cocos://test' },
     });
     assert.equal(res.body.result.contents[0].mimeType, 'application/json');
-    assert.match(res.body.result.contents[0].text, /"ok": true/);
+    assert.equal(JSON.parse(res.body.result.contents[0].text).ok, true);
+});
+
+test('工具返回对象时使用紧凑 JSON，不带缩进换行', async () => {
+    const res = await post({
+        jsonrpc: '2.0', id: 5, method: 'bridge/invoke',
+        params: { name: 'echo', arguments: { value: 7 } },
+    });
+    const text = res.body.result.content[0].text;
+    assert.equal(text.includes('\n'), false);
+    assert.ok(text.length < JSON.stringify(JSON.parse(text), null, 2).length);
 });
 
 test('拒绝无 token、浏览器 Origin、错误 Content-Type 和超限 body', async () => {

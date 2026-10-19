@@ -22,7 +22,8 @@ function wrapContent(result) {
     if (typeof result === 'string') return [textContent(result)];
     if (Array.isArray(result) && result[0] && result[0].type) return result;
     if (result && result.type && result.text !== undefined) return [result];
-    return [textContent(JSON.stringify(result, null, 2))];
+    // 紧凑序列化：缩进对机器消费没有价值，大节点树上会让体积多出约 65%
+    return [textContent(JSON.stringify(result))];
 }
 
 function normalizeToolResult(result) {
@@ -136,7 +137,7 @@ function createEditorBridge(options) {
                 }
                 try {
                     var data = await resource.read();
-                    var text = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+                    var text = typeof data === 'string' ? data : JSON.stringify(data);
                     return response(message.id, {
                         contents: [{
                             type: 'text',
